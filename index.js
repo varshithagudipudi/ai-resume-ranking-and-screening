@@ -43,9 +43,12 @@ function meanPool(tokenVectors) {
 
 // Get embedding
 async function getEmbedding(text) {
-  const output = await embedder(text);
-  const tokenVectors = output[0];
-  return meanPool(tokenVectors);
+  const output = await embedder(text, {
+    pooling: "mean",
+    normalize: true
+  });
+
+  return Array.from(output.data);
 }
 
 // Extract text from PDF or DOCX/DOC
@@ -73,11 +76,17 @@ async function extractText(file) {
 
 // Cosine similarity
 function cosineSimilarity(vecA, vecB) {
+  if (!vecA || !vecB) return 0;
+
   const dot = vecA.reduce((sum, v, i) => sum + v * vecB[i], 0);
   const magA = Math.sqrt(vecA.reduce((sum, v) => sum + v * v, 0));
   const magB = Math.sqrt(vecB.reduce((sum, v) => sum + v * v, 0));
+
+  if (magA === 0 || magB === 0) return 0;
+
   return dot / (magA * magB);
 }
+
 
 // Upload API
 app.post("/upload", upload.array("resumes"), async (req, res) => {
@@ -94,17 +103,18 @@ app.post("/upload", upload.array("resumes"), async (req, res) => {
 
     for (const file of files) {
       const text = await extractText(file);
+      console.log("Extracted text preview:", text.slice(0,200));
       if (!text) {
         console.log("Skipping file (empty text):", file.originalname);
         continue;
       }
 
       const resumeEmbedding = await getEmbedding(text);
-      const score = cosineSimilarity(jobEmbedding, resumeEmbedding);
-
+      let score = cosineSimilarity(jobEmbedding, resumeEmbedding);
+      if (isNaN(score)) score = 0;
       results.push({
         name: file.originalname.replace(/\.(pdf|docx|doc)$/i, ""),
-        score: (score * 100).toFixed(2),
+        score: Number((score * 100).toFixed(2)),
       });
     }
 
